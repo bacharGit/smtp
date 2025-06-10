@@ -479,7 +479,8 @@ func (c *Client) SMTPSendMail(emailData map[string]interface{}) error {
 	}
 
 	data := map[string]string{"email": string(emailJSON)}
-	_, err = c.sendRequest("smtp/emails", "POST", data, true)
+	s, err := c.sendRequest("smtp/emails", "POST", data, true)
+	fmt.Printf("Response: %s\n", string(s))
 	return err
 }
 
