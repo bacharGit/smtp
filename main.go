@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joho/godotenv"
 	"github.com/x/smtp/smtp"
+
+	"github.com/joho/godotenv"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -24,7 +25,7 @@ func main() {
 	}
 	templateStr := string(template)
 
-	f, err := excelize.OpenFile("split_contacts.xlsx")
+	f, err := excelize.OpenFile("out.xlsx")
 	if err != nil {
 		panic(fmt.Errorf("failed to open Excel file: %w", err))
 	}
@@ -38,114 +39,59 @@ func main() {
 		panic(err)
 	}
 
-	// sheets := f.GetSheetList()
-	// fmt.Println("Available sheets:", sheets)
+	sheets := f.GetSheetList()
 
-	// for si, sheet := range sheets {
-	// 	if !strings.HasPrefix(sheet, "sheet_") {
-	// 		fmt.Printf("Skipping sheet %s (does not match naming convention)\n", sheet)
-	// 		continue
-	// 	}
+	for si, sheet := range sheets {
+		fmt.Printf("📄 Processing sheet: %s\n", sheet)
+		rows, err := f.GetRows(sheet)
+		if err != nil {
+			fmt.Printf("❌ Failed to read rows from sheet %s: %v\n", sheet, err)
+			continue
+		}
 
-	// 	rows, err := f.GetRows(sheet)
-	// 	if err != nil {
-	// 		fmt.Printf("Failed to read rows from %s: %v\n", sheet, err)
-	// 		continue
-	// 	}
+		if len(rows) < 2 {
+			fmt.Printf("⚠️  Sheet %s has no emails to send.\n", sheet)
+			continue
+		}
 
-	// 	fmt.Printf("🔄 Processing %d rows in sheet %s (%d/%d)\n", len(rows), sheet, si+1, len(sheets))
-	// 	sent := 0
+		sent := 0
+		for i := 1; i < len(rows) && i <= 50; i++ { // Skip first row (x), send next 50
+			if len(rows[i]) == 0 {
+				continue
+			}
+			email := strings.TrimSpace(rows[i][0])
+			if email == "" {
+				continue
+			}
 
-	// 	for i, row := range rows {
-	// 		if len(row) < 2 {
-	// 			fmt.Printf("⚠️ Skipping incomplete row at index %d in %s: %v\n", i, sheet, row)
-	// 			continue
-	// 		}
+			emailData := map[string]interface{}{
+				"html":    templateStr,
+				"text":    "",
+				"subject": "Bewerbung um einen Ausbildungsplatz als Bauzeichner",
+				"from":    map[string]string{"name": "Bachar Gmagour", "email": "bewerbung@bachargmagour.com"},
+				"to":      []map[string]string{{"email": email}},
+			}
 
-	// 		salutation := row[0]
-	// 		email := row[1]
+			err := client.SMTPSendMail(emailData)
+			if err != nil {
+				fmt.Printf("❌ Failed to send email to %s: %v\n", email, err)
+			} else {
+				fmt.Printf("✅ Email sent to %s (sheet: %s, row: %d)\n", email, sheet, i+1)
+				sent++
+			}
+		}
 
-	// 		if !strings.HasPrefix(salutation, "Sehr geehrte") {
-	// 			salutation = fmt.Sprintf("Sehr geehrte %s", salutation)
-	// 		}
+		fmt.Printf("✅ Finished sheet %s: %d emails sent\n", sheet, sent)
 
-	// 		if salutation == "" || email == "" {
-	// 			fmt.Printf("⚠️ Skipping row %d in %s due to empty fields\n", i, sheet)
-	// 			continue
-	// 		}
-
-	// 		personalized := strings.ReplaceAll(templateStr, "{{salutation}}", salutation)
-
-	// 		emailData := map[string]interface{}{
-	// 			"html":    personalized,
-	// 			"text":    "",
-	// 			"subject": "Bewerbung um einen Ausbildungsplatz als Bauzeichner",
-	// 			"from":    map[string]string{"name": "Bachar Gmagour", "email": "bewerbung@bachargmagour.com"},
-	// 			"to":      []map[string]string{{"email": email}},
-	// 		}
-
-	// 		err := client.SMTPSendMail(emailData)
-	// 		if err != nil {
-	// 			fmt.Printf("❌ Failed to send email to %s: %v\n", email, err)
-	// 		} else {
-	// 			fmt.Printf("✅ Email sent to %s (sheet: %s, row: %d)\n", email, sheet, i)
-	// 			sent++
-	// 		}
-	// 	}
-
-	// 	fmt.Printf("✅ Finished sheet %s: %d emails sent\n", sheet, sent)
-
-	// 	// Only wait if more sheets are coming
-	// 	if si < len(sheets)-1 {
-	// 		fmt.Printf("⏳ Waiting 70 minutes before next batch...\n")
-	// 		for remaining := cooldown; remaining > 0; remaining -= time.Minute {
-	// 			fmt.Printf("🕒 %d minutes remaining...\n", int(remaining.Minutes()))
-	// 			time.Sleep(time.Minute)
-	// 		}
-	// 	}
-	// }
-
-	// fmt.Println("🎉 All sheets processed!")
-
-	personalized1 := strings.ReplaceAll(templateStr, "{{salutation}}", "Sehr geehrte Herr Bachar")
-
-	emailData1 := map[string]interface{}{
-		"html":    personalized1,
-		"text":    "",
-		"subject": "Bewerbung um einen Ausbildungsplatz als Bauzeichner",
-		"from":    map[string]string{"name": "Bachar Gmagour", "email": "bewerbung@bachargmagour.com"},
-		"to":      []map[string]string{{"email": "bacharagmagour2021@gmail.com"}},
+		// Wait before next batch
+		if si < len(sheets)-1 {
+			fmt.Printf("⏳ Waiting 70 minutes before next batch...\n")
+			for remaining := cooldown; remaining > 0; remaining -= time.Minute {
+				fmt.Printf("🕒 %d minutes remaining...\n", int(remaining.Minutes()))
+				time.Sleep(time.Minute)
+			}
+		}
 	}
 
-	if err := client.SMTPSendMail(emailData1); err != nil {
-		fmt.Printf("❌ Failed to send email to %s: %v\n", "bacharagmagour2021@gmail.com", err)
-	}
-
-	personalized2 := strings.ReplaceAll(templateStr, "{{salutation}}", "Sehr geehrte Herr Gmagour")
-
-	emailData2 := map[string]interface{}{
-		"html":    personalized2,
-		"text":    "",
-		"subject": "Bewerbung um einen Ausbildungsplatz als Bauzeichner",
-		"from":    map[string]string{"name": "Bachar Gmagour", "email": "bewerbung@bachargmagour.com"},
-		"to":      []map[string]string{{"email": "support@accountify.ac"}},
-	}
-
-	if err := client.SMTPSendMail(emailData2); err != nil {
-		fmt.Printf("❌ Failed to send email to %s: %v\n", "support@accountify.ac", err)
-	}
-
-	personalized3 := strings.ReplaceAll(templateStr, "{{salutation}}", "Sehr geehrte Herr Brahim")
-
-	emailData3 := map[string]interface{}{
-		"html":    personalized3,
-		"text":    "",
-		"subject": "Bewerbung um einen Ausbildungsplatz als Bauzeichner",
-		"from":    map[string]string{"name": "Bachar Gmagour", "email": "bewerbung@bachargmagour.com"},
-		"to":      []map[string]string{{"email": "brahime373@gmail.com"}},
-	}
-
-	if err := client.SMTPSendMail(emailData3); err != nil {
-		fmt.Printf("❌ Failed to send email to %s: %v\n", "brahime373@gmail.com", err)
-	}
+	fmt.Println("🎉 All sheets processed!")
 }
